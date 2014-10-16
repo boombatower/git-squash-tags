@@ -1,0 +1,40 @@
+#!/bin/bash
+
+DIRECTORY='.git/tmp-diffs'
+
+branch=`git rev-parse --abbrev-ref HEAD`
+oldest=`git rev-list --max-parents=0 HEAD`
+previous=$oldest
+tag_prefix="$(echo $branch | head -c 1)*" # todo assume starting number is a single character
+if [ $# -eq 1 ]; then
+  tag_prefix=$1
+fi
+
+echo "Grabbing tags following pattern $tag_prefix..."
+tags=`git log --reverse --pretty=%d --tags=$tag_prefix --no-walk | sed 's/ (tag: //' | sed 's/)//'`
+
+mkdir $DIRECTORY
+
+for tag in $tags;
+do
+  echo "Squashing $tag..."
+  git diff --full-index --binary $previous $tag > .git/tmp-diffs/$tag.diff
+  previous=$tag
+done
+
+echo "Create new branch for squashed commits..."
+
+git checkout -b $branch-squash `git rev-list --max-parents=0 HEAD`
+rm -rf * # for some reason git doesn't clear out some directories
+git checkout -f .
+
+for tag in $tags;
+do
+  echo "Applying $tag..."
+  git apply --whitespace=nowarn .git/tmp-diffs/$tag.diff
+  sleep 0.5 # seems filesytem can be behind and add call will not see updates
+  git add --all .
+  git commit -m "Squashed $tag"
+done
+
+rm -rf $DIRECTORY
