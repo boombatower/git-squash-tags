@@ -26,7 +26,7 @@ do
   previous=$tag
 done
 
-echo "Create new branch for squashed commits..."
+echo "Create new branch for squashed commits: $branch-squash..."
 
 function commitAll {
   sleep 0.2 # seems filesytem can be behind and add call will not see updates
