@@ -33,3 +33,10 @@ the script.
 $ git-squash-tags 8*
 $ git-squash-tags something-weird*
 ```
+
+Example
+-------
+https://github.com/boombatower/drupal-squash
+
+See `.travis.yml` for automating generation of squashed branch and `update.php` for triggering new
+builds when changes are made upstream.
