@@ -1,9 +1,8 @@
 #!/bin/bash
 
-DIRECTORY='.git/tmp-diffs'
-
 branch=`git rev-parse --abbrev-ref HEAD`
-tag_prefix="$(echo $branch | head -c 1)*" # todo assume starting number is a single character
+branch_squash="$branch-squash"
+tag_prefix="$(echo $branch | head -c 1)*" # assumes starting number is a single character
 if [ $# -eq 1 ]; then
   tag_prefix=$1
 fi
@@ -16,37 +15,39 @@ tags_first=${tags[0]}
 tags=${tags[@]:1}
 echo "Using $tags_first as base."
 
-# create patch files for each tag
-mkdir $DIRECTORY
+function commitAll {
+  git add --all .
+  git commit -m "Squashed $tag."
+}
+
+# determine if $branch_squash already exists
+git show-ref --verify --quiet refs/heads/$branch_squash
+if [ $? -ne 0 ]; then # non-zero exit code indicates branch does not exist
+  echo "Create new branch for squashed commits: $branch_squash..."
+
+  # checkout base tag, create new branch, flush git history, and commit base files
+  git checkout $tags_first
+  git symbolic-ref HEAD refs/heads/$branch_squash
+  rm .git/index
+  tag=$tags_first; commitAll
+  git clean -fdx
+else
+  echo "Resuming in existing squashed branch..."
+  git checkout $branch_squash
+fi
+
+# cycle through tags to squash if necessary
 previous=$tags_first
 for tag in $tags;
 do
-  echo "Squashing $tag..."
-  git diff --full-index --binary $previous $tag > .git/tmp-diffs/$tag.diff
+  exists=`git --no-pager log --oneline -F --grep="Squashed $tag."`
+  if [ -z "$exists" ]; then
+    echo "Squashing $tag..."
+    # pull diff between tags and apply to squash (current) branch
+    git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
+    commitAll
+  else
+    echo "Already squashed $tag, skipping..."
+  fi
   previous=$tag
 done
-
-echo "Create new branch for squashed commits: $branch-squash..."
-
-function commitAll {
-  sleep 0.2 # seems filesytem can be behind and add call will not see updates
-  git add --all .
-  git commit -m "Squashed $tag"
-}
-
-# checkout base tag, create new branch, flush git history, and commit base files
-git checkout $tags_first
-git symbolic-ref HEAD refs/heads/$branch-squash
-rm .git/index
-tag=$tags_first; commitAll
-git clean -fdx
-
-# apply tag diffs and commit
-for tag in $tags;
-do
-  echo "Applying $tag..."
-  git apply --whitespace=nowarn .git/tmp-diffs/$tag.diff
-  commitAll
-done
-
-rm -rf $DIRECTORY

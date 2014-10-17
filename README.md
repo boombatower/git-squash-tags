@@ -34,6 +34,9 @@ $ git-squash-tags 8*
 $ git-squash-tags something-weird*
 ```
 
+To continue with existing squash branch and only process new commits start on the primary branch
+and the script will detect the existing `-squash` branch and commits.
+
 Example
 -------
 https://github.com/boombatower/drupal-squash
