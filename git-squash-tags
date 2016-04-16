@@ -8,7 +8,7 @@ if [ $# -eq 1 ]; then
 fi
 
 echo "Grabbing tags following pattern $tag_prefix..."
-tags=(`git log --reverse --pretty=%d --tags=$tag_prefix --no-walk | sed 's/ (tag: //' | sed 's/)//'`)
+tags=(`git log --reverse --pretty=%d --tags=$tag_prefix --no-walk |grep 'tag:' | sed 's/.*tag: //' | sed 's/)//'|sed 's/,.*//'`)
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
@@ -44,6 +44,7 @@ do
   if [ -z "$exists" ]; then
     echo "Squashing $tag..."
     # pull diff between tags and apply to squash (current) branch
+    # echo "git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn"
     git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
     commitAll
   else
