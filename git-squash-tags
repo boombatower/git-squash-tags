@@ -8,16 +8,18 @@ if [ $# -eq 1 ]; then
 fi
 
 echo "Grabbing tags following pattern $tag_prefix..."
-tags=(`git log --reverse --pretty=%d --tags=$tag_prefix --no-walk | sed 's/ (tag: //' | sed 's/)//'`)
+tags=(`git log --reverse --pretty=%d --tags=$tag_prefix --no-walk |grep 'tag:' | sed 's/.*tag: //' | sed 's/)//'|sed 's/,.*//'`)
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
 tags=${tags[@]:1}
 echo "Using $tags_first as base."
+NEWLINE=$'\n'
 
 function commitAll {
   git add --all .
-  git commit -m "Squashed $tag."
+  log=`git log $previous..$tag`
+  git commit -m "Squashed $tag$NEWLINE$NEWLINE$log"
 }
 
 # determine if $branch_squash already exists
@@ -29,7 +31,7 @@ if [ $? -ne 0 ]; then # non-zero exit code indicates branch does not exist
   git checkout $tags_first
   git symbolic-ref HEAD refs/heads/$branch_squash
   rm .git/index
-  tag=$tags_first; commitAll
+  previous=$tags_first; tag=$tags_first; commitAll
   git clean -fdx
 else
   echo "Resuming in existing squashed branch..."
@@ -44,6 +46,7 @@ do
   if [ -z "$exists" ]; then
     echo "Squashing $tag..."
     # pull diff between tags and apply to squash (current) branch
+    # echo "git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn"
     git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
     commitAll
   else
