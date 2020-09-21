@@ -1,14 +1,44 @@
 #!/bin/bash
 
-branch=`git rev-parse --abbrev-ref HEAD`
-branch_squash="$branch-squash"
-tag_prefix="$(echo $branch | head -c 1)*" # assumes starting number is a single character
-if [ $# -eq 1 ]; then
-  tag_prefix=$1
-fi
+set -e
 
-echo "Grabbing tags following pattern $tag_prefix..."
-tags=(`git log --reverse --pretty=%d --tags=$tag_prefix --no-walk | sed 's/ (tag: //' | sed 's/)//'`)
+PROGNAME="git-squash-tags"
+PROGVERSION="0.2"
+
+branch_suffix="-squash"
+tag_pattern="*"
+tag_prefix="squash."
+
+helpmsg="Usage: $0 [OPTIONS...]
+Create a new branch, squashing all commits between tags matching a prefix.
+Note: If a given commit has multiple tags, extra tags are dismissed.
+
+Options:
+    -S, --branch-suffix SUFFIX   new branch is created appending SUFFIX (default: $branch_suffix) to the current branch
+    -p, --tag-pattern PATTERN    pattern to select some specific tags only (default: $tag_pattern)
+    -P, --tag-prefix PREFIX      prefix for new tags on the new branch (default: $tag_prefix)
+    -h, --help                   this help
+    -V, --version                show version and exit
+"
+
+for ((;$#;)) ; do
+  case "$1" in
+    -S|--branch-suffix) shift ; [ "$1" ] && branch_suffix="$1" || { echo "$helpmsg" ; exit 2 ; } ;;
+    -p|--tag-pattern) shift ; [ "$1" ] && tag_pattern="$1" || { echo "$helpmsg" ; exit 2 ; } ;;
+    -P|--tag-prefix) shift ; [ "$1" ] && tag_prefix="$1" || { echo "$helpmsg" ; exit 2 ; } ;;
+    -h|--h*) echo "$helpmsg" ; exit ;;
+    -V|--vers*) echo "$PROGNAME - $PROGVERSION" ; exit ;;
+    *) echo -e "Error: Unrecognized option $1\n$helpmsg" >&2 ; exit 2 ;;
+  esac
+  shift
+done
+
+branch=`git rev-parse --abbrev-ref HEAD`
+
+branch_squash="$branch$branch_suffix"
+
+echo "Grabbing tags following pattern $tag_pattern..."
+tags=(`git log --reverse --pretty=%d --tags=$tag_pattern --no-walk | sed 's- (tag: -- ; s-[),].*-- ' `)
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
@@ -16,38 +46,40 @@ tags=${tags[@]:1}
 echo "Using $tags_first as base."
 
 function commitAll {
+  local commitMsg="$2"
   git add --all .
-  git commit -m "Squashed $tag."
+  [ "$commitMsg" ] || commitMsg=`git show --summary "$1"`
+  git commit -m "$commitMsg"
+  git tag "$tag_prefix$1"
+
 }
 
 # determine if $branch_squash already exists
-git show-ref --verify --quiet refs/heads/$branch_squash
-if [ $? -ne 0 ]; then # non-zero exit code indicates branch does not exist
+if git show-ref --verify --quiet refs/heads/$branch_squash ; then
+  echo "Resuming in existing squashed branch..."
+  git checkout $branch_squash
+else
   echo "Create new branch for squashed commits: $branch_squash..."
 
   # checkout base tag, create new branch, flush git history, and commit base files
   git checkout $tags_first
   git symbolic-ref HEAD refs/heads/$branch_squash
   rm .git/index
-  tag=$tags_first; commitAll
+  commitAll "$tags_first"
   git clean -fdx
-else
-  echo "Resuming in existing squashed branch..."
-  git checkout $branch_squash
 fi
 
 # cycle through tags to squash if necessary
 previous=$tags_first
 for tag in $tags;
 do
-  exists=`git --no-pager log --oneline -F --grep="Squashed $tag."`
-  if [ -z "$exists" ]; then
+  if [ "`git tag -l "$tag_prefix$tag"`" ] ; then
+    echo "Tag exist, skipping $tag squashing..."
+  else
     echo "Squashing $tag..."
     # pull diff between tags and apply to squash (current) branch
     git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
-    commitAll
-  else
-    echo "Already squashed $tag, skipping..."
+    commitAll "$tag"
   fi
   previous=$tag
 done
