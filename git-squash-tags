@@ -42,8 +42,8 @@ tags=(`git log --reverse --pretty="%H%d"  |  tee >( echo "$(grep "," | tee >(wc 
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
+echo "${#tags[@]} tags. Using $tags_first as base."
 tags=${tags[@]:1}
-echo "Using $tags_first as base."
 
 function commitAll {
   local commitMsg="$2"
@@ -60,13 +60,9 @@ if git show-ref --verify --quiet refs/heads/$branch_squash ; then
   git checkout $branch_squash
 else
   echo "Create new branch for squashed commits: $branch_squash..."
-
-  # checkout base tag, create new branch, flush git history, and commit base files
+  # checkout base tag and create new branch
   git checkout $tags_first
-  git symbolic-ref HEAD refs/heads/$branch_squash
-  rm .git/index
-  commitAll "$tags_first"
-  git clean -fdx
+  git checkout -b $branch_squash
 fi
 
 # cycle through tags to squash if necessary
@@ -75,7 +71,7 @@ for tag in $tags; do
   if [ "`git tag -l "$tag_prefix$tag"`" ] ; then
     echo "Tag exist, skipping $tag squashing..."
   else
-    echo "Squashing $tag..."
+    echo "Squashing $previous..$tag ..."
     # pull diff between tags and apply to squash (current) branch
     git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
     commitAll "$tag"
