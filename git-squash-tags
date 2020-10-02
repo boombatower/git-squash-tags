@@ -6,12 +6,12 @@ PROGNAME="git-squash-tags"
 PROGVERSION="0.2"
 
 branch_suffix="-squash"
-tag_pattern="*"
+tag_pattern="^.*$"
 tag_prefix="squash."
 
 helpmsg="Usage: $0 [OPTIONS...]
 Create a new branch, squashing all commits between tags matching a prefix.
-Note: If a given commit has multiple tags, extra tags are dismissed.
+Note: If a given commit has multiple ref names, only last tag is considered.
 
 Options:
     -S, --branch-suffix SUFFIX   new branch is created appending SUFFIX (default: $branch_suffix) to the current branch
@@ -38,7 +38,7 @@ branch=`git rev-parse --abbrev-ref HEAD`
 branch_squash="$branch$branch_suffix"
 
 echo "Grabbing tags following pattern $tag_pattern..."
-tags=(`git log --reverse --pretty=%d --tags=$tag_pattern --no-walk | sed 's- (tag: -- ; s-[),].*-- ' `)
+tags=(`git log --reverse --pretty="%H%d"  |  tee >( echo "$(grep "," | tee >(wc -l) >&2 ) commit(s) found with multiple ref names." >&2 ) | sed -n 's-.*tag: \([^ ),]\+\).*-\1-p ' | grep "$tag_pattern" `)
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
@@ -71,8 +71,7 @@ fi
 
 # cycle through tags to squash if necessary
 previous=$tags_first
-for tag in $tags;
-do
+for tag in $tags; do
   if [ "`git tag -l "$tag_prefix$tag"`" ] ; then
     echo "Tag exist, skipping $tag squashing..."
   else
