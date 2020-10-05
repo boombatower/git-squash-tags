@@ -38,7 +38,14 @@ branch=`git rev-parse --abbrev-ref HEAD`
 branch_squash="$branch$branch_suffix"
 
 echo "Grabbing tags following pattern $tag_pattern..."
-tags=(`git log --reverse --pretty="%H%d"  |  tee >( echo "$(grep "," | tee >(wc -l) >&2 ) commit(s) found with multiple ref names." >&2 ) | sed -n 's-.*tag: \([^ ),]\+\).*-\1-p ' | grep "$tag_pattern" `)
+while read commitsh refname ; do
+	commits+=("$commitsh")
+	tag="$(sed -n 's-.*tag: \([^ ),]\+\).*-\1-p ' <<<"$refname" | grep "$tag_pattern" )"
+	if [ "$tag" ] ; then
+		tags+=("$tag")
+		unset commits
+	fi
+done <<<$( git log --reverse --pretty="%H %d" | tee >( echo "$(grep "," | tee >(wc -l) >&2 ) commit(s) found with multiple ref names." >&2 ) )
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
@@ -50,8 +57,6 @@ function commitAll {
   git add --all .
   [ "$commitMsg" ] || commitMsg=`git show --summary "$1"`
   git commit -m "$commitMsg"
-  git tag "$tag_prefix$1"
-
 }
 
 # determine if $branch_squash already exists
@@ -75,6 +80,18 @@ for tag in $tags; do
     # pull diff between tags and apply to squash (current) branch
     git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
     commitAll "$tag"
+    git tag "$tag_prefix$1"
   fi
   previous=$tag
+done
+
+for commitsh in "${commits[@]}" ; do
+	if git show -q "$commitsh" &> /dev/null  ; then
+		echo "commit $commitsh exist, skipping..."
+	else
+		# pull diff and apply
+		git diff --full-index --binary $previous "$commitsh" | git apply --whitespace=nowarn
+		commitAll "$commitsh"
+	fi
+	previous=$commitsh
 done
