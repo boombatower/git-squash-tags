@@ -3,7 +3,7 @@
 set -e
 
 PROGNAME="git-squash-tags"
-PROGVERSION="0.2"
+PROGVERSION="0.3"
 
 branch_suffix="-squash"
 tag_pattern="^.*$"
@@ -40,12 +40,15 @@ branch_squash="$branch$branch_suffix"
 echo "Grabbing tags following pattern $tag_pattern..."
 while read commitsh refname ; do
 	commits+=("$commitsh")
-	tag="$(sed -n 's-.*tag: \([^ ),]\+\).*-\1-p ' <<<"$refname" | grep "$tag_pattern" )"
-	if [ "$tag" ] ; then
+	if tag="$(sed -n 's-.*tag: \([^ ),]\+\).*-\1-p ' <<<"$refname" | grep "$tag_pattern" )" ; then
+		echo " $tag"
 		tags+=("$tag")
 		unset commits
+	else
+		echo -n "+"
 	fi
 done <<<$( git log --reverse --pretty="%H %d" | tee >( echo "$(grep "," | tee >(wc -l) >&2 ) commit(s) found with multiple ref names." >&2 ) )
+echo
 
 # pull out first tag and remove it from $tags as it will be used as base
 tags_first=${tags[0]}
@@ -78,20 +81,24 @@ for tag in $tags; do
   else
     echo "Squashing $previous..$tag ..."
     # pull diff between tags and apply to squash (current) branch
-    git diff --full-index --binary $previous $tag | git apply --whitespace=nowarn
+    git diff --full-index --binary "$previous" "$tag" | git apply --whitespace=nowarn
     commitAll "$tag"
-    git tag "$tag_prefix$1"
+    git tag "$tag_prefix$tag"
   fi
   previous=$tag
+  echo
 done
 
+# cycle through commits since last tag
+logs="$(git log --oneline)"
 for commitsh in "${commits[@]}" ; do
-	if git show -q "$commitsh" &> /dev/null  ; then
-		echo "commit $commitsh exist, skipping..."
-	else
+	if ! grep " commit $commitsh " <<<"$logs" ; then
+		# echo something on stdout
+		git log --pretty=oneline --abbrev-commit -n 1 "$commitsh"
 		# pull diff and apply
-		git diff --full-index --binary $previous "$commitsh" | git apply --whitespace=nowarn
+		git diff --full-index --binary "$previous" "$commitsh" | git apply --whitespace=nowarn
 		commitAll "$commitsh"
 	fi
 	previous=$commitsh
+	echo
 done
