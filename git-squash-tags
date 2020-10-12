@@ -3,11 +3,11 @@
 set -e
 
 PROGNAME="git-squash-tags"
-PROGVERSION="0.3"
+PROGVERSION="0.3u"
 
 branch_suffix="-squash"
 tag_pattern="^.*$"
-tag_prefix="squash."
+tag_prefix="squash_"
 
 helpmsg="Usage: $0 [OPTIONS...]
 Create a new branch, squashing all commits between tags matching a prefix.
@@ -17,6 +17,7 @@ Options:
     -S, --branch-suffix SUFFIX   new branch is created appending SUFFIX (default: $branch_suffix) to the current branch
     -p, --tag-pattern PATTERN    pattern to select some specific tags only (default: $tag_pattern)
     -P, --tag-prefix PREFIX      prefix for new tags on the new branch (default: $tag_prefix)
+    -c, --with-commits           also cherry-pick commits after last tags
     -h, --help                   this help
     -V, --version                show version and exit
 "
@@ -26,6 +27,7 @@ for ((;$#;)) ; do
     -S|--branch-suffix) shift ; [ "$1" ] && branch_suffix="$1" || { echo "$helpmsg" ; exit 2 ; } ;;
     -p|--tag-pattern) shift ; [ "$1" ] && tag_pattern="$1" || { echo "$helpmsg" ; exit 2 ; } ;;
     -P|--tag-prefix) shift ; [ "$1" ] && tag_prefix="$1" || { echo "$helpmsg" ; exit 2 ; } ;;
+    -c|--with-commits) withcommits=1 ;;
     -h|--h*) echo "$helpmsg" ; exit ;;
     -V|--vers*) echo "$PROGNAME - $PROGVERSION" ; exit ;;
     *) echo -e "Error: Unrecognized option $1\n$helpmsg" >&2 ; exit 2 ;;
@@ -73,24 +75,30 @@ else
   git checkout -b $branch_squash
 fi
 
+
+logs="$(git log --pretty="%H (%D) %s" )"
+
 # cycle through tags to squash if necessary
 previous=$tags_first
 for tag in $tags; do
-  if [ "`git tag -l "$tag_prefix$tag"`" ] ; then
-    echo "Tag exist, skipping $tag squashing..."
-  else
-    echo "Squashing $previous..$tag ..."
-    # pull diff between tags and apply to squash (current) branch
-    git diff --full-index --binary "$previous" "$tag" | git apply --whitespace=nowarn
-    commitAll "$tag"
-    git tag "$tag_prefix$tag"
-  fi
-  previous=$tag
-  echo
+	if ! grep "[ (]tag: $tag_prefix$tag[,)]" <<<"$logs" ; then
+		if [ "`git tag -l "$tag_prefix$tag"`" ] ; then
+			git rebase "$tag_prefix$tag"
+		else
+			echo "Squashing $previous..$tag ..."
+			# pull diff between tags and apply to squash (current) branch
+			git diff --full-index --binary "$previous" "$tag" | git apply --whitespace=nowarn
+			commitAll "$tag"
+			git tag "$tag_prefix$tag"
+		fi
+	fi
+	previous=$tag
+	echo
 done
 
+((withcommits)) || exit
+
 # cycle through commits since last tag
-logs="$(git log --oneline)"
 for commitsh in "${commits[@]}" ; do
 	if ! grep " commit $commitsh " <<<"$logs" ; then
 		# echo something on stdout
