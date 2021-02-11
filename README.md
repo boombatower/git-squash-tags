@@ -20,22 +20,14 @@ commits in a new branch with the suffix `-squash`.
 $ git-squash-tags
 ```
 
-The script assumes the branch names are formatted similar to the tags. For example:
-
-branch: 7.x
-tags: 7.0, 7.1, 7.2
-
-The first character of the branch is used for matching tags relevant to that branch. If a different
-pattern is needed (such as master branch with 1.x tags) simply pass the pattern as the argument to
-the script.
+To change some default parameters see online help:
 
 ```sh
-$ git-squash-tags 8*
-$ git-squash-tags something-weird*
+$ git-squash-tags --help
 ```
 
 To continue with existing squash branch and only process new commits start on the primary branch
-and the script will detect the existing `-squash` branch and commits.
+and launch the script with the same parameters. It will detect the existing squashed branch and commits.
 
 Example
 -------
